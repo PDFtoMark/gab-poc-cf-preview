@@ -1,0 +1,57 @@
+name: "CF: Deploy Docs Preview"
+on:
+  workflow_run:
+    workflows: ["CF: Build Docs Preview"]
+    types: [completed]
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  deploy-preview:
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout base repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Context probe
+        run: |
+          echo "GITHUB_SHA=$GITHUB_SHA"
+          echo "GITHUB_REF=$GITHUB_REF"
+          echo "checked_out=$(git rev-parse HEAD)"
+          echo "trigger_head_sha=${{ github.event.workflow_run.head_sha }}"
+          echo "trigger_head_branch=${{ github.event.workflow_run.head_branch }}"
+          echo "forked_run_repo=${{ github.event.workflow_run.head_repository.full_name }}"
+      - name: Download Artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: cf-preview-data
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+          path: downloaded-artifact
+      - name: Read PR Number
+        id: get_pr
+        run: |
+          PR_NUMBER=$(cat downloaded-artifact/pr_number.txt)
+          if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            echo "Error: PR number [$PR_NUMBER] is invalid."
+            exit 1
+          fi
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+      - name: Deploy stand-in
+        run: |
+          echo "WOULD_RUN: wrangler pages deploy downloaded-artifact/public --project-name toolbox-docs --branch pr-${{ steps.get_pr.outputs.pr_number }}"
+          find downloaded-artifact -type f | sort
+          echo "--- index.html ---"
+          cat downloaded-artifact/public/index.html
+          echo "--- _worker.js ---"
+          cat downloaded-artifact/public/_worker.js
+      - name: Token artifact read probe
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          code=$(curl -sS -o /tmp/arts.json -w '%{http_code}' --max-time 20 -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/artifacts")
+          echo "artifacts_api_status=$code"
+          head -c 300 /tmp/arts.json; echo
