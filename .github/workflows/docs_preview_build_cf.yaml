@@ -1,0 +1,11 @@
+name: "CF: Build Docs Preview"
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+permissions: read-all
+jobs:
+  build-preview:
+    if: "contains(github.event.pull_request.labels.*.name, 'docs: deploy-preview')"
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "legit build gated by maintainer label"
